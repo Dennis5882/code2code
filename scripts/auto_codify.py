@@ -57,7 +57,7 @@ def main():
 
         try:
             response = client.chat.completions.create(
-                model="deepseek-chat",
+                model="deepseek-v4-flash",
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": f"다음 구조설계기준 문서를 분석하고 프로토콜에 맞춰 결과물을 작성해줘:\n\n{document_content}"}
