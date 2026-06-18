@@ -16,7 +16,7 @@ jobs:
         with:
           python-version: '3.10'
       - name: Install Dependencies
-        run: pip install openai
+        run: pip install openai pypdf # PDF 추출을 위한 pypdf 추가
       - name: Run AI Automation Script
         env:
           AI_API_KEY: ${{ secrets.AI_API_KEY }} 
@@ -26,4 +26,4 @@ jobs:
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           git add docs/ src/
-          git diff --quiet && git diff --staged --quiet || (git commit -m "🤖 AI Auto-Commit: 문서 분석 및 소스 코드 생성 완료" && git push)
+          git diff --quiet && git diff --staged --quiet || (git commit -m "🤖 AI Auto-Commit: PDF/TXT 문서 분석 및 코드 생성 완료" && git push)
