@@ -1,0 +1,29 @@
+name: AI Codification Pipeline
+on:
+  push:
+    paths:
+      - 'references/**'
+jobs:
+  ai_process:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: Install Dependencies
+        run: pip install openai
+      - name: Run AI Automation Script
+        env:
+          AI_API_KEY: ${{ secrets.AI_API_KEY }} 
+        run: python scripts/auto_codify.py
+      - name: Commit and Push AI Generated Files
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          git add docs/ src/
+          git diff --quiet && git diff --staged --quiet || (git commit -m "🤖 AI Auto-Commit: 문서 분석 및 소스 코드 생성 완료" && git push)
