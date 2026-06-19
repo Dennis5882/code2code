@@ -13,11 +13,6 @@ PROMPT_FILE = Path("PROMPT.md")
 MODEL_NAME = "deepseek-v4-flash"
 PDF_CHUNK_PAGE_SIZE = int(os.environ.get("PDF_CHUNK_PAGE_SIZE", "8"))
 TEXT_CHUNK_CHAR_LIMIT = int(os.environ.get("TEXT_CHUNK_CHAR_LIMIT", "12000"))
-REFERENCE_PATTERNS = tuple(
-    pattern.strip()
-    for pattern in os.environ.get("REFERENCE_PATTERNS", "*.txt,*.pdf").split(",")
-    if pattern.strip()
-)
 
 
 class PipelineError(Exception):
@@ -38,15 +33,62 @@ def build_client() -> OpenAI:
     return OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
 
 
+def configured_reference_patterns() -> tuple[str, ...]:
+    """Return file glob patterns configured for fallback collection."""
+    patterns = tuple(
+        pattern.strip()
+        for pattern in os.environ.get("REFERENCE_PATTERNS", "*.txt,*.pdf").split(",")
+        if pattern.strip()
+    )
+    return patterns or ("*.txt", "*.pdf")
+
+
+def configured_reference_files() -> tuple[Path, ...]:
+    """Return explicit reference files passed by the workflow, if any."""
+    raw_value = os.environ.get("REFERENCE_FILES", "").strip()
+    if not raw_value:
+        return ()
+
+    files = []
+    for raw_path in raw_value.splitlines():
+        normalized = raw_path.strip().replace("\\", "/")
+        if not normalized:
+            continue
+        path = Path(normalized)
+        if path.is_absolute() or ".." in path.parts:
+            raise PipelineError(f"허용되지 않는 REFERENCE_FILES 경로입니다: {normalized}")
+        files.append(path)
+    return tuple(files)
+
+
 def collect_reference_files() -> list[Path]:
     """Return sorted reference files that should be processed."""
+    explicit_files = configured_reference_files()
+    if explicit_files:
+        ref_files = []
+        for relative_path in explicit_files:
+            full_path = (Path.cwd() / relative_path).resolve()
+            try:
+                full_path.relative_to(REFERENCES_DIR.resolve())
+            except ValueError as exc:
+                raise PipelineError(
+                    f"REFERENCE_FILES 는 references/ 하위만 허용됩니다: {relative_path}"
+                ) from exc
+            if full_path.is_file():
+                ref_files.append(full_path)
+
+        if not ref_files:
+            raise PipelineError("REFERENCE_FILES 로 전달된 파일이 존재하지 않습니다.")
+        return sorted(ref_files)
+
     files = []
-    for pattern in REFERENCE_PATTERNS:
+    patterns = configured_reference_patterns()
+    for pattern in patterns:
         files.extend(REFERENCES_DIR.glob(pattern))
-    ref_files = sorted(path for path in files if path.is_file())
+    ref_files = sorted(path.resolve() for path in files if path.is_file())
     if not ref_files:
         raise PipelineError(
-            f"references/ 폴더에 처리할 파일이 없습니다. patterns={REFERENCE_PATTERNS}"
+            f"references/ 폴더에 처리할 파일이 없습니다. patterns={patterns}"
         )
     return ref_files
 
