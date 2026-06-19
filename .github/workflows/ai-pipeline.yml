@@ -25,7 +25,7 @@ jobs:
           if [ "${{ github.event.before }}" = "0000000000000000000000000000000000000000" ]; then
             changed_files=$(find references -type f \( -name "*.txt" -o -name "*.pdf" \) | sort)
           else
-            changed_files=$(git diff --name-only "${{ github.event.before }}" "${{ github.sha }}" -- 'references/**/*.txt' 'references/**/*.pdf' 'references/*.txt' 'references/*.pdf' | sort -u)
+            changed_files=$(git diff --diff-filter=A --name-only "${{ github.event.before }}" "${{ github.sha }}" -- 'references/**/*.txt' 'references/**/*.pdf' 'references/*.txt' 'references/*.pdf' | sort -u)
           fi
           {
             echo 'reference_files<<EOF'

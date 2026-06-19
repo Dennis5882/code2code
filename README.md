@@ -28,7 +28,7 @@
 - 생성된 결과에서 `docs/manuals/*.md`와 `src/*.py`를 분리 저장합니다.
 - `assumptions`, `open_questions`를 메타데이터 JSON으로 저장합니다.
 - 청크 중간 결과를 `docs/manuals/*_chunks.json`에 저장합니다.
-- GitHub Actions가 `references/**` 변경 시 자동 실행되며, 실제로 바뀐 reference 파일만 처리합니다.
+- GitHub Actions가 `references/**` 변경 시 자동 실행되며, 실제로 새로 추가된 reference 파일만 처리합니다.
 - 필수 출력 누락, API 키 누락, PDF 추출 실패, JSON 파싱 실패 시 워크플로를 실패 처리합니다.
 - 기본 예시 코드 `src/building_classifier.py`와 `pytest` 기반 샘플 테스트가 포함되어 있습니다.
 

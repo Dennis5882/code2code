@@ -10,13 +10,26 @@ REFERENCES_DIR = Path("references")
 DOCS_DIR = Path("docs/manuals")
 SRC_DIR = Path("src")
 PROMPT_FILE = Path("PROMPT.md")
-MODEL_NAME = "deepseek-v4-flash"
+MODEL_NAME = os.environ.get("DEEPSEEK_MODEL", "deepseek-chat")
 PDF_CHUNK_PAGE_SIZE = int(os.environ.get("PDF_CHUNK_PAGE_SIZE", "8"))
 TEXT_CHUNK_CHAR_LIMIT = int(os.environ.get("TEXT_CHUNK_CHAR_LIMIT", "12000"))
 
 
 class PipelineError(Exception):
     """Raised when the automation pipeline cannot produce valid outputs."""
+
+
+def log(message: str) -> None:
+    """Print a pipeline progress message."""
+    print(f"[auto_codify] {message}")
+
+
+def preview_text(value: str, limit: int = 300) -> str:
+    """Return a compact preview for logs."""
+    compact = " ".join(value.split())
+    if len(compact) <= limit:
+        return compact
+    return compact[:limit] + "...(truncated)"
 
 
 def sanitize_stem(file_path: Path) -> str:
@@ -30,6 +43,7 @@ def build_client() -> OpenAI:
     api_key = os.environ.get("AI_API_KEY")
     if not api_key:
         raise PipelineError("환경 변수 AI_API_KEY 가 설정되어 있지 않습니다.")
+    log(f"API client configured for model={MODEL_NAME}")
     return OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
 
 
@@ -65,6 +79,7 @@ def collect_reference_files() -> list[Path]:
     """Return sorted reference files that should be processed."""
     explicit_files = configured_reference_files()
     if explicit_files:
+        log(f"Using explicit reference file list: {len(explicit_files)} entries")
         ref_files = []
         for relative_path in explicit_files:
             full_path = (Path.cwd() / relative_path).resolve()
@@ -79,10 +94,12 @@ def collect_reference_files() -> list[Path]:
 
         if not ref_files:
             raise PipelineError("REFERENCE_FILES 로 전달된 파일이 존재하지 않습니다.")
+        log("Resolved explicit files: " + ", ".join(path.name for path in sorted(ref_files)))
         return sorted(ref_files)
 
     files = []
     patterns = configured_reference_patterns()
+    log(f"Collecting reference files by patterns={patterns}")
     for pattern in patterns:
         files.extend(REFERENCES_DIR.glob(pattern))
     ref_files = sorted(path.resolve() for path in files if path.is_file())
@@ -95,6 +112,7 @@ def collect_reference_files() -> list[Path]:
 
 def extract_pdf_pages(pdf_path: Path) -> list[str]:
     """Extract non-empty text for each PDF page."""
+    log(f"Extracting PDF text: {pdf_path.name}")
     try:
         reader = PdfReader(str(pdf_path))
     except Exception as exc:
@@ -142,11 +160,13 @@ def split_pdf_into_chunks(file_path: Path) -> list[dict]:
 
     if not chunks:
         raise PipelineError(f"PDF 청크가 비어 있습니다: {file_path}")
+    log(f"Built {len(chunks)} PDF chunks for {file_path.name}")
     return chunks
 
 
 def split_text_into_chunks(file_path: Path) -> list[dict]:
     """Split a UTF-8 text file into paragraph-based chunks."""
+    log(f"Reading text file: {file_path.name}")
     try:
         raw_text = file_path.read_text(encoding="utf-8")
     except Exception as exc:
@@ -191,6 +211,7 @@ def split_text_into_chunks(file_path: Path) -> list[dict]:
             }
         )
 
+    log(f"Built {len(chunks)} text chunks for {file_path.name}")
     return chunks
 
 
@@ -205,6 +226,7 @@ def request_chunk_analysis(
     client: OpenAI, file_name: str, chunk: dict
 ) -> dict:
     """Analyze one chunk and return structured notes for later integration."""
+    log(f"Requesting chunk analysis for {file_name} [{chunk['label']}]")
     chunk_prompt = (
         "다음은 구조설계기준 문서의 일부 청크다.\n"
         "이 청크만 기준으로 분석하고, 반드시 유효한 JSON 객체 하나만 반환해.\n"
@@ -241,7 +263,7 @@ def request_chunk_analysis(
         payload = json.loads(content)
     except json.JSONDecodeError as exc:
         raise PipelineError(
-            f"청크 분석 응답이 유효한 JSON이 아닙니다: {file_name} {chunk['label']} ({exc})"
+            f"청크 분석 응답이 유효한 JSON이 아닙니다: {file_name} {chunk['label']} ({exc}) preview={preview_text(content)}"
         ) from exc
 
     required_keys = {
@@ -259,6 +281,7 @@ def request_chunk_analysis(
     if not payload["summary_markdown"].strip():
         raise PipelineError(f"청크 요약이 비어 있습니다: {file_name} {chunk['label']}")
 
+    log(f"Chunk analysis OK for {file_name} [{chunk['label']}]")
     return payload
 
 
@@ -266,6 +289,7 @@ def request_integrated_output(
     client: OpenAI, system_prompt: str, file_name: str, chunk_analyses: list[dict]
 ) -> dict:
     """Combine chunk analyses into the final output contract."""
+    log(f"Requesting integrated output for {file_name} with {len(chunk_analyses)} chunk analyses")
     integration_input = {
         "file_name": file_name,
         "chunk_analyses": chunk_analyses,
@@ -297,10 +321,11 @@ def request_integrated_output(
         payload = json.loads(content)
     except json.JSONDecodeError as exc:
         raise PipelineError(
-            f"통합 분석 응답이 유효한 JSON이 아닙니다: {file_name} ({exc})"
+            f"통합 분석 응답이 유효한 JSON이 아닙니다: {file_name} ({exc}) preview={preview_text(content)}"
         ) from exc
 
     validate_final_payload(payload, file_name)
+    log(f"Integrated output OK for {file_name}")
     return payload
 
 
@@ -385,6 +410,10 @@ def write_outputs(reference_file: Path, chunk_analyses: list[dict], payload: dic
         json.dumps(chunk_analyses, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
+    log(
+        f"Saved outputs for {reference_file.name}: manual={manual_path.name}, "
+        f"sources={len(saved_sources)}, chunks={len(chunk_analyses)}"
+    )
 
 
 def process_reference_file(client: OpenAI, system_prompt: str, file_path: Path) -> None:
@@ -408,17 +437,18 @@ def main() -> None:
 
     client = build_client()
     ref_files = collect_reference_files()
+    log(f"Processing {len(ref_files)} reference file(s)")
     failures = []
 
     for file_path in ref_files:
-        print(f"분석 시작: {file_path.name}")
+        log(f"분석 시작: {file_path.name}")
         try:
             process_reference_file(client, system_prompt, file_path)
         except PipelineError as exc:
             failures.append(str(exc))
             print(f"실패: {exc}", file=sys.stderr)
             continue
-        print(f"저장 완료: docs/manuals/{sanitize_stem(file_path)}_분석.md, src/*.py")
+        log(f"저장 완료: docs/manuals/{sanitize_stem(file_path)}_분석.md, src/*.py")
 
     if failures:
         print("\n파이프라인 실패 요약:", file=sys.stderr)
