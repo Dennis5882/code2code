@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts.auto_codify import PipelineError, collect_reference_files
+from scripts.auto_codify import PipelineError, collect_reference_files, parse_json_response
 
 
 def test_collect_reference_files_uses_explicit_changed_files(
@@ -55,3 +55,21 @@ def test_collect_reference_files_falls_back_to_patterns(
 
     assert files == [included.resolve()]
     assert excluded.resolve() not in files
+
+
+def test_parse_json_response_accepts_fenced_json() -> None:
+    payload = parse_json_response(
+        '```json\n{"manual_markdown": "ok", "source_files": []}\n```',
+        "test",
+    )
+
+    assert payload["manual_markdown"] == "ok"
+
+
+def test_parse_json_response_extracts_json_object_from_text() -> None:
+    payload = parse_json_response(
+        'Here is the result:\n{"chunk_label": "chunk_1", "clauses": []}\nThanks.',
+        "test",
+    )
+
+    assert payload["chunk_label"] == "chunk_1"

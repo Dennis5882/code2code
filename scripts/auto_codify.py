@@ -32,6 +32,38 @@ def preview_text(value: str, limit: int = 300) -> str:
     return compact[:limit] + "...(truncated)"
 
 
+def parse_json_response(content: str, context: str) -> dict:
+    """Parse model JSON, accepting bare JSON or a fenced JSON block."""
+    stripped = content.strip()
+    candidates = [stripped]
+
+    if stripped.startswith("```"):
+        lines = stripped.splitlines()
+        if lines and lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        candidates.append("\n".join(lines).strip())
+
+    first_brace = stripped.find("{")
+    last_brace = stripped.rfind("}")
+    if first_brace != -1 and last_brace != -1 and first_brace < last_brace:
+        candidates.append(stripped[first_brace : last_brace + 1])
+
+    for candidate in candidates:
+        if not candidate:
+            continue
+        try:
+            payload = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(payload, dict):
+            raise PipelineError(f"{context} JSON 루트는 객체여야 합니다.")
+        return payload
+
+    raise PipelineError(f"{context} 응답이 유효한 JSON이 아닙니다. preview={preview_text(content)}")
+
+
 def sanitize_stem(file_path: Path) -> str:
     """Return a filesystem-friendly stem for generated files."""
     sanitized = file_path.stem.replace("/", "_").replace("\\", "_").strip()
@@ -250,6 +282,7 @@ def request_chunk_analysis(
         response = client.chat.completions.create(
             model=MODEL_NAME,
             messages=[{"role": "user", "content": chunk_prompt}],
+            response_format={"type": "json_object"},
             temperature=0.1,
         )
     except Exception as exc:
@@ -259,12 +292,7 @@ def request_chunk_analysis(
     if not content or not content.strip():
         raise PipelineError(f"청크 분석 응답이 비어 있습니다: {file_name} {chunk['label']}")
 
-    try:
-        payload = json.loads(content)
-    except json.JSONDecodeError as exc:
-        raise PipelineError(
-            f"청크 분석 응답이 유효한 JSON이 아닙니다: {file_name} {chunk['label']} ({exc}) preview={preview_text(content)}"
-        ) from exc
+    payload = parse_json_response(content, f"청크 분석: {file_name} {chunk['label']}")
 
     required_keys = {
         "chunk_label": str,
@@ -308,6 +336,7 @@ def request_integrated_output(
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
+            response_format={"type": "json_object"},
             temperature=0.1,
         )
     except Exception as exc:
@@ -317,12 +346,7 @@ def request_integrated_output(
     if not content or not content.strip():
         raise PipelineError(f"통합 분석 응답이 비어 있습니다: {file_name}")
 
-    try:
-        payload = json.loads(content)
-    except json.JSONDecodeError as exc:
-        raise PipelineError(
-            f"통합 분석 응답이 유효한 JSON이 아닙니다: {file_name} ({exc}) preview={preview_text(content)}"
-        ) from exc
+    payload = parse_json_response(content, f"통합 분석: {file_name}")
 
     validate_final_payload(payload, file_name)
     log(f"Integrated output OK for {file_name}")
