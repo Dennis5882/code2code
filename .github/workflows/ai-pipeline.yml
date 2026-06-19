@@ -16,11 +16,13 @@ jobs:
         with:
           python-version: '3.10'
       - name: Install Dependencies
-        run: pip install openai pypdf # PDF 추출을 위한 pypdf 추가
+        run: pip install -r requirements.txt
       - name: Run AI Automation Script
         env:
           AI_API_KEY: ${{ secrets.AI_API_KEY }} 
         run: python scripts/auto_codify.py
+      - name: Run Tests
+        run: pytest
       - name: Commit and Push AI Generated Files
         run: |
           git config --global user.name 'github-actions[bot]'
