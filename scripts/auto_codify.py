@@ -13,6 +13,11 @@ PROMPT_FILE = Path("PROMPT.md")
 MODEL_NAME = "deepseek-v4-flash"
 PDF_CHUNK_PAGE_SIZE = int(os.environ.get("PDF_CHUNK_PAGE_SIZE", "8"))
 TEXT_CHUNK_CHAR_LIMIT = int(os.environ.get("TEXT_CHUNK_CHAR_LIMIT", "12000"))
+REFERENCE_PATTERNS = tuple(
+    pattern.strip()
+    for pattern in os.environ.get("REFERENCE_PATTERNS", "*.txt,*.pdf").split(",")
+    if pattern.strip()
+)
 
 
 class PipelineError(Exception):
@@ -36,11 +41,13 @@ def build_client() -> OpenAI:
 def collect_reference_files() -> list[Path]:
     """Return sorted reference files that should be processed."""
     files = []
-    for pattern in ("*.txt", "*.pdf"):
+    for pattern in REFERENCE_PATTERNS:
         files.extend(REFERENCES_DIR.glob(pattern))
     ref_files = sorted(path for path in files if path.is_file())
     if not ref_files:
-        raise PipelineError("references/ 폴더에 처리할 .txt 또는 .pdf 파일이 없습니다.")
+        raise PipelineError(
+            f"references/ 폴더에 처리할 파일이 없습니다. patterns={REFERENCE_PATTERNS}"
+        )
     return ref_files
 
 

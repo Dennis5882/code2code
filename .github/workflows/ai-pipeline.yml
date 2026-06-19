@@ -20,6 +20,7 @@ jobs:
       - name: Run AI Automation Script
         env:
           AI_API_KEY: ${{ secrets.AI_API_KEY }} 
+          REFERENCE_PATTERNS: "*.txt"
         run: python scripts/auto_codify.py
       - name: Run Tests
         run: pytest
