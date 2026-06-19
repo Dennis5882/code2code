@@ -1,0 +1,5 @@
+This is a focused smoke test for the DeepSeek chat model.
+
+Clause 1. The pipeline should process only this newly added reference file.
+Clause 2. The model should return valid structured JSON for chunk analysis.
+Clause 3. The final integration step should produce a manual and source file.
