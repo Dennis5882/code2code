@@ -36,6 +36,7 @@ jobs:
         env:
           AI_API_KEY: ${{ secrets.AI_API_KEY }}
           REFERENCE_FILES: ${{ steps.changed_refs.outputs.reference_files }}
+          PYTHONUNBUFFERED: '1'
         run: python scripts/auto_codify.py
       - name: Run Tests
         run: pytest

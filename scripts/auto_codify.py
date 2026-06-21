@@ -346,9 +346,13 @@ def request_integrated_output(
     if not content or not content.strip():
         raise PipelineError(f"통합 분석 응답이 비어 있습니다: {file_name}")
 
-    payload = parse_json_response(content, f"통합 분석: {file_name}")
-
-    validate_final_payload(payload, file_name)
+    try:
+        payload = parse_json_response(content, f"통합 분석: {file_name}")
+        validate_final_payload(payload, file_name)
+    except PipelineError:
+        # 실패 원인 파악을 위해 모델 원문 미리보기를 stdout 으로 남긴다.
+        log(f"통합 분석 실패 — 모델 원문 미리보기: {preview_text(content, 600)}")
+        raise
     log(f"Integrated output OK for {file_name}")
     return payload
 
@@ -470,6 +474,7 @@ def main() -> None:
             process_reference_file(client, system_prompt, file_path)
         except PipelineError as exc:
             failures.append(str(exc))
+            log(f"실패: {exc}")
             print(f"실패: {exc}", file=sys.stderr)
             continue
         log(f"저장 완료: docs/manuals/{sanitize_stem(file_path)}_분석.md, src/*.py")
