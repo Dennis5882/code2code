@@ -97,7 +97,9 @@ def configured_reference_files() -> tuple[Path, ...]:
 
     files = []
     for raw_path in raw_value.splitlines():
-        normalized = raw_path.strip().replace("\\", "/")
+        # git 은 비ASCII 경로를 따옴표로 감싸 출력할 수 있다(core.quotePath).
+        # 워크플로에서 quotePath=false 로 끄지만, 방어적으로 양끝 따옴표도 제거한다.
+        normalized = raw_path.strip().strip('"').strip().replace("\\", "/")
         if not normalized:
             continue
         path = Path(normalized)
