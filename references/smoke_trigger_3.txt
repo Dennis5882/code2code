@@ -1,5 +1,0 @@
-Smoke trigger #3 — verify the source-path normalization fix.
-
-Clause 1. Process only this newly added reference file.
-Clause 2. The integration step must accept paths like /src/foo.py and normalize them under src/.
-Clause 3. Output must contain a manual, source files, assumptions, and open questions.
