@@ -8,6 +8,9 @@ from pathlib import Path
 import pdfplumber
 from openai import OpenAI
 
+__version__ = "0.4.0"
+__author__ = "Dennis"
+
 REFERENCES_DIR = Path("references")
 DOCS_DIR = Path("docs/manuals")
 SRC_DIR = Path("src")
@@ -587,6 +590,8 @@ def write_outputs(reference_file: Path, chunk_analyses: list[dict], payload: dic
         saved_sources.append(str(source_path.relative_to(Path.cwd())).replace("\\", "/"))
 
     metadata = {
+        "pipeline_version": __version__,
+        "developer": __author__,
         "reference_file": str(reference_file.as_posix()),
         "manual_file": str(manual_path.as_posix()),
         "source_files": saved_sources,
@@ -625,6 +630,7 @@ def process_reference_file(client: OpenAI, system_prompt: str, file_path: Path) 
 
 
 def main() -> None:
+    log(f"auto_codify v{__version__} (developer: {__author__})")
     try:
         system_prompt = PROMPT_FILE.read_text(encoding="utf-8")
     except Exception as exc:

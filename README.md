@@ -1,8 +1,11 @@
 # Engineering Analysis & Codification Project
 
+![Version](https://img.shields.io/badge/version-0.4.0-success)
 ![Status](https://img.shields.io/badge/status-analysis_automation_only-blue)
 ![Python](https://img.shields.io/badge/python-3.10%2B-3776AB)
 ![CI](https://img.shields.io/badge/CI-GitHub_Actions-2088FF)
+
+> 개발자: **Dennis** · 버전 이력은 [CHANGELOG.md](CHANGELOG.md) 참고.
 
 구조설계기준(Design Code) 문서를 AI로 분석해 엔지니어링 매뉴얼과 소프트웨어 구현 자산으로 전환하는 것을 목표로 하는 저장소입니다.
 
