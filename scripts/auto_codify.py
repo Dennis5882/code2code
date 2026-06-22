@@ -20,6 +20,9 @@ MAX_OUTPUT_TOKENS = int(os.environ.get("MAX_OUTPUT_TOKENS", "8192"))
 # 일시적 API 오류 재시도 설정(#4).
 API_MAX_RETRIES = int(os.environ.get("API_MAX_RETRIES", "3"))
 API_RETRY_BASE_DELAY = float(os.environ.get("API_RETRY_BASE_DELAY", "2"))
+# 비용/규모 폭주 방지 가드(#9): 한 번에 처리할 파일 수와 개별 파일 크기 상한.
+MAX_REFERENCE_FILES = int(os.environ.get("MAX_REFERENCE_FILES", "20"))
+MAX_FILE_MB = float(os.environ.get("MAX_FILE_MB", "20"))
 
 try:  # 일시적(transient) 오류만 재시도하기 위한 예외 집합. SDK 버전차에 견고하게 임포트.
     from openai import (
@@ -74,6 +77,17 @@ def call_with_retries(
 def log(message: str) -> None:
     """Print a pipeline progress message."""
     print(f"[auto_codify] {message}")
+
+
+def log_usage(response, label: str) -> None:
+    """Log token usage for observability when the SDK reports it (#16)."""
+    usage = getattr(response, "usage", None)
+    if usage is None:
+        return
+    prompt = getattr(usage, "prompt_tokens", "?")
+    completion = getattr(usage, "completion_tokens", "?")
+    total = getattr(usage, "total_tokens", "?")
+    log(f"tokens[{label}] prompt={prompt} completion={completion} total={total}")
 
 
 def preview_text(value: str, limit: int = 300) -> str:
@@ -226,6 +240,25 @@ def tables_to_markdown(tables: list) -> str:
         lines.extend("| " + " | ".join(row) + " |" for row in body)
         blocks.append("\n".join(lines))
     return "\n\n".join(blocks)
+
+
+def enforce_reference_limit(files) -> None:
+    """Guard against processing too many files in one run (#9)."""
+    if len(files) > MAX_REFERENCE_FILES:
+        raise PipelineError(
+            f"처리 파일 수가 상한을 초과했습니다: {len(files)} > {MAX_REFERENCE_FILES}. "
+            "MAX_REFERENCE_FILES 로 조정하거나 한 번에 처리할 파일을 줄이세요."
+        )
+
+
+def enforce_file_size(path: Path) -> None:
+    """Guard against oversized reference files (#9)."""
+    size_mb = path.stat().st_size / (1024 * 1024)
+    if size_mb > MAX_FILE_MB:
+        raise PipelineError(
+            f"파일이 너무 큽니다: {path.name} ({size_mb:.1f}MB > {MAX_FILE_MB}MB). "
+            "MAX_FILE_MB 로 조정하거나 문서를 분할하세요."
+        )
 
 
 def extract_pdf_pages(pdf_path: Path) -> list[str]:
@@ -385,6 +418,7 @@ def request_chunk_analysis(
     except Exception as exc:
         raise PipelineError(f"청크 분석 API 호출 실패: {file_name} {chunk['label']} ({exc})") from exc
 
+    log_usage(response, f"chunk:{chunk['label']}")
     content = response.choices[0].message.content if response.choices else None
     if not content or not content.strip():
         raise PipelineError(f"청크 분석 응답이 비어 있습니다: {file_name} {chunk['label']}")
@@ -442,6 +476,7 @@ def request_integrated_output(
     except Exception as exc:
         raise PipelineError(f"통합 분석 API 호출 실패: {file_name} ({exc})") from exc
 
+    log_usage(response, "integration")
     content = response.choices[0].message.content if response.choices else None
     if not content or not content.strip():
         raise PipelineError(f"통합 분석 응답이 비어 있습니다: {file_name}")
@@ -577,6 +612,7 @@ def write_outputs(reference_file: Path, chunk_analyses: list[dict], payload: dic
 
 def process_reference_file(client: OpenAI, system_prompt: str, file_path: Path) -> None:
     """Process one reference file through chunk analysis and integration."""
+    enforce_file_size(file_path)
     chunks = build_document_chunks(file_path)
     chunk_analyses = []
 
@@ -596,6 +632,7 @@ def main() -> None:
 
     client = build_client()
     ref_files = collect_reference_files()
+    enforce_reference_limit(ref_files)
     log(f"Processing {len(ref_files)} reference file(s)")
     failures = []
 

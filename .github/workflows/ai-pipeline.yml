@@ -27,7 +27,8 @@ jobs:
             # 수동 실행(workflow_dispatch, before 없음) 또는 새 브랜치 최초 push 시 references 전체 처리.
             changed_files=$(find references -type f \( -name "*.txt" -o -name "*.pdf" \) | sort)
           else
-            changed_files=$(git -c core.quotePath=false diff --diff-filter=A --name-only "${{ github.event.before }}" "${{ github.sha }}" -- 'references/**/*.txt' 'references/**/*.pdf' 'references/*.txt' 'references/*.pdf' | sort -u)
+            # 추가(A)뿐 아니라 수정(M)된 reference 도 재처리한다(#10).
+            changed_files=$(git -c core.quotePath=false diff --diff-filter=AM --name-only "${{ github.event.before }}" "${{ github.sha }}" -- 'references/**/*.txt' 'references/**/*.pdf' 'references/*.txt' 'references/*.pdf' | sort -u)
           fi
           {
             echo 'reference_files<<EOF'

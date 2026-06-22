@@ -175,3 +175,24 @@ def test_tables_to_markdown_empty() -> None:
 
     assert tables_to_markdown([]) == ""
     assert tables_to_markdown([[[None, None]]]) == ""  # all-empty rows dropped
+
+
+def test_enforce_reference_limit(monkeypatch: pytest.MonkeyPatch) -> None:
+    import scripts.auto_codify as ac
+
+    monkeypatch.setattr(ac, "MAX_REFERENCE_FILES", 2)
+    ac.enforce_reference_limit([Path("a"), Path("b")])  # at limit: ok
+    with pytest.raises(PipelineError):
+        ac.enforce_reference_limit([Path("a"), Path("b"), Path("c")])
+
+
+def test_enforce_file_size(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import scripts.auto_codify as ac
+
+    f = tmp_path / "big.txt"
+    f.write_bytes(b"x" * (3 * 1024 * 1024))  # 3 MB
+    monkeypatch.setattr(ac, "MAX_FILE_MB", 1)
+    with pytest.raises(PipelineError):
+        ac.enforce_file_size(f)
+    monkeypatch.setattr(ac, "MAX_FILE_MB", 10)
+    ac.enforce_file_size(f)  # under limit: ok

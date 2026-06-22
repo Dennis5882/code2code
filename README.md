@@ -22,21 +22,26 @@
 현재 기준으로 구현된 범위:
 
 - `references/` 폴더의 `.pdf`, `.txt` 파일을 탐색합니다.
-- PDF는 `pypdf`로 페이지 단위 텍스트를 추출합니다.
+- PDF는 `pdfplumber`로 페이지 단위 텍스트를 추출하고, **표(table)는 Markdown으로 변환해** 원문에 함께 주입합니다. (규범의 계수 표가 평문으로 뭉개지지 않도록.)
+- 래스터 그림이 있는 페이지는 "그림 안 수치는 추출되지 않음" 주석으로 표시합니다.
 - 큰 문서는 페이지/텍스트 청크로 분할한 뒤 청크 분석 결과를 최종 통합합니다.
 - 추출한 원문을 AI 모델에 전달해 구조화된 JSON 결과를 생성합니다.
-- 생성된 결과에서 `docs/manuals/*.md`와 `src/*.py`를 분리 저장합니다.
-- `assumptions`, `open_questions`를 메타데이터 JSON으로 저장합니다.
-- 청크 중간 결과를 `docs/manuals/*_chunks.json`에 저장합니다.
-- GitHub Actions가 `references/**` 변경 시 자동 실행되며, 실제로 새로 추가된 reference 파일만 처리합니다.
+- 일시적 API 오류(rate limit·timeout·연결·5xx)는 지수 백오프로 자동 재시도합니다.
+- 생성된 결과에서 `docs/manuals/*.md`와 소스 코드를 분리 저장합니다.
+- 생성 소스는 **reference별 폴더 `src/<기준서명>/`** 아래에 저장하며, 재처리 시 해당 폴더를 갱신해 파일명이 바뀌어도 중복이 쌓이지 않습니다.
+- 모델이 돌려준 소스 경로(`/src/...`, `src/...`, `foo.py` 등)는 안전한 상대경로로 정규화합니다.
+- `assumptions`, `open_questions`를 메타데이터 JSON으로 저장하고, 청크 중간 결과를 `docs/manuals/*_chunks.json`에 저장합니다.
+- GitHub Actions가 `references/**` 변경 시 자동 실행되며, **새로 추가(A)되거나 수정(M)된** reference 파일만 처리합니다. (`Run workflow` 수동 실행 시에는 references 전체를 처리합니다.)
+- 한 번에 처리할 파일 수(`MAX_REFERENCE_FILES`)와 개별 파일 크기(`MAX_FILE_MB`)에 상한을 두어 비용 폭주를 막습니다.
 - 필수 출력 누락, API 키 누락, PDF 추출 실패, JSON 파싱 실패 시 워크플로를 실패 처리합니다.
-- 기본 예시 코드 `src/building_classifier.py`와 `pytest` 기반 샘플 테스트가 포함되어 있습니다.
+- 기본 예시 코드 `src/building_classifier.py`와 `pytest` 기반 테스트(`tests/`)가 포함되어 있습니다. (테스트 설정은 `pyproject.toml`.)
 
 아직 구현되지 않은 범위:
 
-- 장/절 단위 분할 분석
-- 테스트 자동화
-- 생성 코드 품질에 대한 자동 검증
+- 장/절(헤더) 단위의 의미 기반 분할 (현재는 페이지/문자 수 기반)
+- 매우 큰 다청크 문서의 통합 출력 분할(map-reduce)
+- 래스터 그림 속 수치의 추출(비전/OCR)
+- 생성 코드의 공학적 정확성 자동 검증
 
 즉, 현재 저장소는 "구조화된 AI 출력 기반 분석/코드 초안 생성 자동화" 단계에 있으며, "검증 가능한 완전한 설계 코드 생성 파이프라인"은 아직 아닙니다.
 
@@ -79,10 +84,23 @@ references/ 문서 추가
 ## Tech Stack
 
 - Python
-- `openai` Python SDK
-- `pypdf`
+- `openai` Python SDK (DeepSeek API 엔드포인트 호출)
+- `pdfplumber` (PDF 텍스트 + 표 추출)
 - GitHub Actions
 - Prompt protocol in `PROMPT.md`
+
+주요 환경 변수:
+
+| 변수 | 기본값 | 설명 |
+|---|---|---|
+| `AI_API_KEY` | (필수) | DeepSeek API 키 |
+| `DEEPSEEK_MODEL` | `deepseek-chat` | 사용 모델 |
+| `PDF_CHUNK_PAGE_SIZE` | `8` | PDF 청크당 페이지 수 |
+| `TEXT_CHUNK_CHAR_LIMIT` | `12000` | 텍스트 청크 문자 상한 |
+| `MAX_OUTPUT_TOKENS` | `8192` | 통합 출력 토큰 상한 |
+| `API_MAX_RETRIES` | `3` | 일시적 오류 재시도 횟수 |
+| `MAX_REFERENCE_FILES` | `20` | 한 번에 처리할 파일 수 상한 |
+| `MAX_FILE_MB` | `20` | 개별 파일 크기 상한(MB) |
 
 참고:
 README의 초기 설명에는 `Claude Code`가 언급되어 있었지만, 현재 저장소의 실제 자동화 스크립트는 OpenAI SDK 형식으로 DeepSeek API 엔드포인트를 호출하도록 작성되어 있습니다. 문서와 구현은 앞으로 계속 일치하도록 관리할 예정입니다.
@@ -99,7 +117,10 @@ README의 초기 설명에는 `Claude Code`가 언급되어 있었지만, 현재
   │   └── manuals/                  # 분석 문서, 청크 결과, 메타데이터
   ├── scripts/
   │   └── auto_codify.py            # 현재 자동화 진입점
-  └── src/                          # AI가 생성한 Python 코드 초안
+  ├── pyproject.toml                # pytest 설정 (pythonpath, testpaths)
+  └── src/
+      ├── building_classifier.py    # 손으로 작성한 예시 모듈
+      └── <기준서명>/               # AI가 생성한 코드 (reference별 폴더)
 ```
 
 ## Example Output
