@@ -1,0 +1,14 @@
+[
+  {
+    "chunk_label": "chunk_1",
+    "summary_markdown": "This chunk describes a smoke test (trigger #3) to verify a source-path normalization fix. It specifies that only a newly added reference file should be processed, that integration must normalize paths like /src/foo.py to src/, and that the output must include manual, source files, assumptions, and open questions.",
+    "clauses": [
+      "Process only this newly added reference file.",
+      "The integration step must accept paths like /src/foo.py and normalize them under src/.",
+      "Output must contain a manual, source files, assumptions, and open questions."
+    ],
+    "formulas": [],
+    "assumptions": [],
+    "open_questions": []
+  }
+]
