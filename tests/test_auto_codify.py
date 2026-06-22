@@ -148,3 +148,30 @@ def test_call_with_retries_exhausts_and_raises_last() -> None:
         )
 
     assert calls["n"] == 3  # initial + 2 retries
+
+
+def test_tables_to_markdown_renders_rows() -> None:
+    from scripts.auto_codify import tables_to_markdown
+
+    md = tables_to_markdown([[["回歸期\nn", "0.5", "1"], ["係數", "0.30", "0.46"]]])
+
+    assert "[표 1]" in md
+    assert "| 回歸期 n | 0.5 | 1 |" in md  # newline collapsed
+    assert "| --- | --- | --- |" in md
+    assert "| 係數 | 0.30 | 0.46 |" in md
+
+
+def test_tables_to_markdown_handles_none_and_ragged_rows() -> None:
+    from scripts.auto_codify import tables_to_markdown
+
+    md = tables_to_markdown([[["a", None], ["b"]]])  # None cell + short row
+
+    assert "| a |  |" in md
+    assert "| b |  |" in md  # padded to width 2
+
+
+def test_tables_to_markdown_empty() -> None:
+    from scripts.auto_codify import tables_to_markdown
+
+    assert tables_to_markdown([]) == ""
+    assert tables_to_markdown([[[None, None]]]) == ""  # all-empty rows dropped

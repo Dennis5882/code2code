@@ -5,8 +5,8 @@ import sys
 import time
 from pathlib import Path
 
+import pdfplumber
 from openai import OpenAI
-from pypdf import PdfReader
 
 REFERENCES_DIR = Path("references")
 DOCS_DIR = Path("docs/manuals")
@@ -196,26 +196,67 @@ def collect_reference_files() -> list[Path]:
     return ref_files
 
 
-def extract_pdf_pages(pdf_path: Path) -> list[str]:
-    """Extract non-empty text for each PDF page."""
-    log(f"Extracting PDF text: {pdf_path.name}")
-    try:
-        reader = PdfReader(str(pdf_path))
-    except Exception as exc:
-        raise PipelineError(f"PDF 파일을 열 수 없습니다: {pdf_path} ({exc})") from exc
+def _clean_cell(value) -> str:
+    """Collapse whitespace/newlines in a table cell."""
+    if value is None:
+        return ""
+    return " ".join(str(value).split())
 
+
+def tables_to_markdown(tables: list) -> str:
+    """Render extracted tables (list of row-lists) as GitHub-flavored Markdown.
+
+    규범의 계수 표는 보통 이미지가 아니라 텍스트(벡터) 표라서, 구조를 보존해
+    모델에 전달하면 평문 추출보다 계수 값을 훨씬 정확히 코드화할 수 있다(#17).
+    """
+    blocks = []
+    for index, table in enumerate(tables or [], start=1):
+        rows = [[_clean_cell(cell) for cell in row] for row in table if row]
+        rows = [row for row in rows if any(row)]
+        if not rows:
+            continue
+        width = max(len(row) for row in rows)
+        rows = [row + [""] * (width - len(row)) for row in rows]
+        header, body = rows[0], rows[1:]
+        lines = [
+            f"[표 {index}]",
+            "| " + " | ".join(header) + " |",
+            "| " + " | ".join(["---"] * width) + " |",
+        ]
+        lines.extend("| " + " | ".join(row) + " |" for row in body)
+        blocks.append("\n".join(lines))
+    return "\n\n".join(blocks)
+
+
+def extract_pdf_pages(pdf_path: Path) -> list[str]:
+    """Extract per-page text plus any structured tables (as Markdown) for a PDF."""
+    log(f"Extracting PDF text/tables: {pdf_path.name}")
     page_texts = []
-    for index, page in enumerate(reader.pages, start=1):
-        try:
-            extracted = (page.extract_text() or "").strip()
-        except Exception as exc:
-            raise PipelineError(
-                f"PDF 페이지 텍스트 추출 실패: {pdf_path} page={index} ({exc})"
-            ) from exc
-        page_texts.append(extracted)
+    table_count = 0
+    image_pages = []
+    try:
+        with pdfplumber.open(str(pdf_path)) as document:
+            for index, page in enumerate(document.pages, start=1):
+                text = (page.extract_text() or "").strip()
+                tables_md = tables_to_markdown(page.extract_tables() or [])
+                if tables_md:
+                    table_count += tables_md.count("[표 ")
+                if page.images:
+                    image_pages.append(index)
+                    # 래스터 그림의 수치는 텍스트로 추출되지 않으므로 명시적으로 표시한다.
+                    text = (text + f"\n\n[주의] 이 페이지(p{index})에는 그림 {len(page.images)}개가 있으며, "
+                            "그림 안의 수치/기호는 본문 텍스트로 추출되지 않았습니다.").strip()
+                combined = (text + ("\n\n" + tables_md if tables_md else "")).strip()
+                page_texts.append(combined)
+    except PipelineError:
+        raise
+    except Exception as exc:
+        raise PipelineError(f"PDF를 읽을 수 없습니다: {pdf_path} ({exc})") from exc
 
     if not any(page_texts):
         raise PipelineError(f"PDF에서 텍스트를 추출하지 못했습니다: {pdf_path}")
+    log(f"Extracted {len(page_texts)} pages, {table_count} table(s)"
+        + (f", images on pages {image_pages}" if image_pages else ""))
     return page_texts
 
 
