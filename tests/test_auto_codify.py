@@ -153,8 +153,9 @@ def test_call_with_retries_exhausts_and_raises_last() -> None:
 def test_tables_to_markdown_renders_rows() -> None:
     from scripts.auto_codify import tables_to_markdown
 
-    md = tables_to_markdown([[["回歸期\nn", "0.5", "1"], ["係數", "0.30", "0.46"]]])
+    md, count = tables_to_markdown([[["回歸期\nn", "0.5", "1"], ["係數", "0.30", "0.46"]]])
 
+    assert count == 1
     assert "[표 1]" in md
     assert "| 回歸期 n | 0.5 | 1 |" in md  # newline collapsed
     assert "| --- | --- | --- |" in md
@@ -164,17 +165,41 @@ def test_tables_to_markdown_renders_rows() -> None:
 def test_tables_to_markdown_handles_none_and_ragged_rows() -> None:
     from scripts.auto_codify import tables_to_markdown
 
-    md = tables_to_markdown([[["a", None], ["b"]]])  # None cell + short row
+    md, count = tables_to_markdown([[["a", None], ["b"]]])  # None cell + short row
 
+    assert count == 1
     assert "| a |  |" in md
     assert "| b |  |" in md  # padded to width 2
+
+
+def test_tables_to_markdown_escapes_pipe_and_backslash() -> None:
+    """셀에 '|' 가 있으면 열 경계로 오인되어 표가 깨지므로 이스케이프해야 한다(#17 정확도)."""
+    from scripts.auto_codify import tables_to_markdown
+
+    md, count = tables_to_markdown([[["h", "unit"], ["a", "kN|m"], ["b", "x\\y"]]])
+
+    assert count == 1
+    assert "kN\\|m" in md  # 원본 파이프는 이스케이프되어 남아 있어야 함
+    assert "x\\\\y" in md  # 백슬래시도 이스케이프
+    assert "| a | kN\\|m |" in md  # 열이 3개로 밀리지 않고 2열 그대로 유지
 
 
 def test_tables_to_markdown_empty() -> None:
     from scripts.auto_codify import tables_to_markdown
 
-    assert tables_to_markdown([]) == ""
-    assert tables_to_markdown([[[None, None]]]) == ""  # all-empty rows dropped
+    assert tables_to_markdown([]) == ("", 0)
+    assert tables_to_markdown([[[None, None]]]) == ("", 0)  # all-empty rows dropped
+
+
+def test_tables_to_markdown_count_ignores_bracket_text_in_cells() -> None:
+    """표 카운트는 렌더링된 블록 수 기준이라 셀 안의 '[표 ' 문자열에 오염되지 않는다(#regression)."""
+    from scripts.auto_codify import tables_to_markdown
+
+    md, count = tables_to_markdown(
+        [[["ref", "note"], ["1", "[표 3] 참조"]]]
+    )
+
+    assert count == 1
 
 
 def test_enforce_reference_limit(monkeypatch: pytest.MonkeyPatch) -> None:

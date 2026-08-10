@@ -68,11 +68,13 @@ jobs:
               `실패 단계의 로그를 확인하세요. (\`Run AI Automation Script\` / \`Run Tests\`)`,
             ].join('\n');
             // 같은 커밋에 대해 열려 있는 중복 이슈가 없을 때만 생성한다.
-            const existing = await github.rest.issues.listForRepo({
+            // listForRepo는 PR도 포함하고 기본 30건까지만 오므로, 전체 페이지를 순회하며
+            // 실제 이슈(PR 제외)만 비교한다.
+            const existing = await github.paginate(github.rest.issues.listForRepo, {
               owner: context.repo.owner, repo: context.repo.repo,
-              state: 'open', labels: 'ai-pipeline-failure',
+              state: 'open', labels: 'ai-pipeline-failure', per_page: 100,
             });
-            if (existing.data.some(i => i.title === title)) {
+            if (existing.some(i => !i.pull_request && i.title === title)) {
               core.info('이미 동일 실패 이슈가 열려 있어 생성을 건너뜁니다.');
               return;
             }

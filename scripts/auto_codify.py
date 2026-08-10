@@ -214,20 +214,28 @@ def collect_reference_files() -> list[Path]:
 
 
 def _clean_cell(value) -> str:
-    """Collapse whitespace/newlines in a table cell."""
+    """Collapse whitespace/newlines in a table cell and escape Markdown metachars.
+
+    셀 값에 `|` 가 있으면 GFM 표의 열 경계로 오인되어 컬럼이 밀린다(#17 계수 정렬 붕괴).
+    백슬래시와 파이프를 이스케이프해 표 구조를 보존한다.
+    """
     if value is None:
         return ""
-    return " ".join(str(value).split())
+    collapsed = " ".join(str(value).split())
+    return collapsed.replace("\\", "\\\\").replace("|", "\\|")
 
 
-def tables_to_markdown(tables: list) -> str:
+def tables_to_markdown(tables: list) -> tuple[str, int]:
     """Render extracted tables (list of row-lists) as GitHub-flavored Markdown.
 
     규범의 계수 표는 보통 이미지가 아니라 텍스트(벡터) 표라서, 구조를 보존해
     모델에 전달하면 평문 추출보다 계수 값을 훨씬 정확히 코드화할 수 있다(#17).
+
+    Returns (markdown, table_count) — 카운트는 실제로 렌더링된 표 블록 수 기준이라
+    셀 내용에 "[표 " 같은 상호참조 문자열이 있어도 오염되지 않는다.
     """
     blocks = []
-    for index, table in enumerate(tables or [], start=1):
+    for table in tables or []:
         rows = [[_clean_cell(cell) for cell in row] for row in table if row]
         rows = [row for row in rows if any(row)]
         if not rows:
@@ -236,13 +244,13 @@ def tables_to_markdown(tables: list) -> str:
         rows = [row + [""] * (width - len(row)) for row in rows]
         header, body = rows[0], rows[1:]
         lines = [
-            f"[표 {index}]",
+            f"[표 {len(blocks) + 1}]",
             "| " + " | ".join(header) + " |",
             "| " + " | ".join(["---"] * width) + " |",
         ]
         lines.extend("| " + " | ".join(row) + " |" for row in body)
         blocks.append("\n".join(lines))
-    return "\n\n".join(blocks)
+    return "\n\n".join(blocks), len(blocks)
 
 
 def enforce_reference_limit(files) -> None:
@@ -264,32 +272,49 @@ def enforce_file_size(path: Path) -> None:
         )
 
 
+# 로고/머리글 등 장식용 래스터를 실제 "그림"과 구분하기 위한 최소 면적(pt^2).
+# 대략 60x60pt 미만은 아이콘/로고로 간주해 경고 노이즈에서 제외한다.
+MIN_FIGURE_AREA_PT2 = 3600
+
+
+def _is_significant_image(image: dict) -> bool:
+    """Filter out tiny embedded rasters (logos, icons) that aren't real figures."""
+    width = image.get("width", 0) or 0
+    height = image.get("height", 0) or 0
+    return (width * height) >= MIN_FIGURE_AREA_PT2
+
+
 def extract_pdf_pages(pdf_path: Path) -> list[str]:
     """Extract per-page text plus any structured tables (as Markdown) for a PDF."""
     log(f"Extracting PDF text/tables: {pdf_path.name}")
     page_texts = []
     table_count = 0
     image_pages = []
+    has_real_content = False
     try:
         with pdfplumber.open(str(pdf_path)) as document:
             for index, page in enumerate(document.pages, start=1):
                 text = (page.extract_text() or "").strip()
-                tables_md = tables_to_markdown(page.extract_tables() or [])
-                if tables_md:
-                    table_count += tables_md.count("[표 ")
-                if page.images:
+                tables_md, page_table_count = tables_to_markdown(page.extract_tables() or [])
+                table_count += page_table_count
+                if text or tables_md:
+                    has_real_content = True
+
+                significant_images = [
+                    img for img in (page.images or []) if _is_significant_image(img)
+                ]
+                if significant_images:
                     image_pages.append(index)
                     # 래스터 그림의 수치는 텍스트로 추출되지 않으므로 명시적으로 표시한다.
-                    text = (text + f"\n\n[주의] 이 페이지(p{index})에는 그림 {len(page.images)}개가 있으며, "
+                    text = (text + f"\n\n[주의] 이 페이지(p{index})에는 그림 {len(significant_images)}개가 있으며, "
                             "그림 안의 수치/기호는 본문 텍스트로 추출되지 않았습니다.").strip()
                 combined = (text + ("\n\n" + tables_md if tables_md else "")).strip()
                 page_texts.append(combined)
-    except PipelineError:
-        raise
     except Exception as exc:
         raise PipelineError(f"PDF를 읽을 수 없습니다: {pdf_path} ({exc})") from exc
 
-    if not any(page_texts):
+    # 경고문만 있고 실제 텍스트/표가 전혀 없는 경우(스캔본 등)는 코드화 대상이 아니다.
+    if not has_real_content:
         raise PipelineError(f"PDF에서 텍스트를 추출하지 못했습니다: {pdf_path}")
     log(f"Extracted {len(page_texts)} pages, {table_count} table(s)"
         + (f", images on pages {image_pages}" if image_pages else ""))
