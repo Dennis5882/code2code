@@ -97,7 +97,8 @@ references/ 문서 추가
 | 변수 | 기본값 | 설명 |
 |---|---|---|
 | `AI_API_KEY` | (필수) | DeepSeek API 키 |
-| `DEEPSEEK_MODEL` | `deepseek-chat` | 사용 모델 |
+| `DEEPSEEK_MODEL` | `deepseek-v4-flash` | 사용 모델 (구 `deepseek-chat` 은 2026-07-24 폐기됨) |
+| `DEEPSEEK_THINKING` | `disabled` | `enabled` 로 설정 시 V4 thinking(추론) 모드 사용, 과금 증가 |
 | `PDF_CHUNK_PAGE_SIZE` | `8` | PDF 청크당 페이지 수 |
 | `TEXT_CHUNK_CHAR_LIMIT` | `12000` | 텍스트 청크 문자 상한 |
 | `MAX_OUTPUT_TOKENS` | `8192` | 통합 출력 토큰 상한 |

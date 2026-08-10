@@ -8,14 +8,18 @@ from pathlib import Path
 import pdfplumber
 from openai import OpenAI
 
-__version__ = "0.4.0"
+__version__ = "0.4.1"
 __author__ = "Dennis"
 
 REFERENCES_DIR = Path("references")
 DOCS_DIR = Path("docs/manuals")
 SRC_DIR = Path("src")
 PROMPT_FILE = Path("PROMPT.md")
-MODEL_NAME = os.environ.get("DEEPSEEK_MODEL", "deepseek-chat")
+# deepseek-chat/deepseek-reasoner 레거시 별칭은 2026-07-24 15:59 UTC부로 폐기됨.
+# deepseek-v4-flash 가 후속 모델이며, thinking 기본 활성화라 명시적으로 꺼서
+# 과거 deepseek-chat 과 동일한 비용/동작(비추론 모드)을 유지한다.
+MODEL_NAME = os.environ.get("DEEPSEEK_MODEL", "deepseek-v4-flash")
+MODEL_THINKING_ENABLED = os.environ.get("DEEPSEEK_THINKING", "disabled") == "enabled"
 PDF_CHUNK_PAGE_SIZE = int(os.environ.get("PDF_CHUNK_PAGE_SIZE", "8"))
 TEXT_CHUNK_CHAR_LIMIT = int(os.environ.get("TEXT_CHUNK_CHAR_LIMIT", "12000"))
 # 통합 출력이 잘리지 않도록 출력 토큰 한도를 명시한다(#3 완화).
@@ -441,6 +445,7 @@ def request_chunk_analysis(
                 messages=[{"role": "user", "content": chunk_prompt}],
                 response_format={"type": "json_object"},
                 temperature=0.1,
+                extra_body={"thinking": {"type": "enabled" if MODEL_THINKING_ENABLED else "disabled"}},
             )
         )
     except Exception as exc:
@@ -499,6 +504,7 @@ def request_integrated_output(
                 response_format={"type": "json_object"},
                 temperature=0.1,
                 max_tokens=MAX_OUTPUT_TOKENS,
+                extra_body={"thinking": {"type": "enabled" if MODEL_THINKING_ENABLED else "disabled"}},
             )
         )
     except Exception as exc:

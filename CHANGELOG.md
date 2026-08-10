@@ -8,6 +8,11 @@
 
 ---
 
+## [0.4.1] - 2026-08-10 — Dennis
+
+### Fixed
+- **DeepSeek 모델 레거시 별칭 폐기 대응:** `deepseek-chat`/`deepseek-reasoner`가 2026-07-24 15:59 UTC부로 완전 폐기됨에 따라 `MODEL_NAME` 기본값을 후속 모델 `deepseek-v4-flash`로 교체. V4는 기본적으로 thinking(추론) 모드가 켜져 있어 과거 `deepseek-chat`과 동일한 비용/동작을 유지하기 위해 `extra_body={"thinking": {"type": "disabled"}}`를 두 API 호출(청크 분석/통합)에 모두 명시. 필요 시 `DEEPSEEK_THINKING=enabled` 환경변수로 재활성화 가능.
+
 ## [0.4.0] - 2026-06-23 — Dennis
 
 ### Added
